@@ -1,14 +1,26 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { useUserRole } from "@/lib/hooks/use-user-role";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
-import { BookOpen, Briefcase, ArrowRight, Wallet } from "lucide-react";
+import { BookOpen, Briefcase, ArrowRight } from "lucide-react";
+import { useEffect } from "react";
 
 export default function RoleSelectionPage() {
   const router = useRouter();
+  const { address, isConnected } = useAccount();
   const { setRole } = useUserRole();
+
+  // Redirect to home if not connected
+  useEffect(() => {
+    if (!isConnected) {
+      router.push("/");
+    }
+  }, [isConnected, router]);
+
+  if (!isConnected) return null;
 
   const handleRoleSelect = (role: "student" | "tutor") => {
     setRole(role);
@@ -28,9 +40,12 @@ export default function RoleSelectionPage() {
         <div className="container mx-auto max-w-4xl">
           {/* Header */}
           <div className="text-center mb-16">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Choose Your Role</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+              Choose Your Role
+            </h1>
             <p className="text-lg text-muted-foreground">
-              Select whether you'd like to learn from expert mentors or teach and earn.
+              Select whether you'd like to learn from expert mentors or teach
+              and earn.
             </p>
           </div>
 
@@ -47,7 +62,8 @@ export default function RoleSelectionPage() {
 
               <h2 className="text-2xl font-bold mb-2">I Want to Learn</h2>
               <p className="text-muted-foreground mb-6">
-                Browse our community of expert mentors, book sessions, and earn verified credentials for your achievements.
+                Browse our community of expert mentors, book sessions, and earn
+                verified credentials for your achievements.
               </p>
 
               <ul className="space-y-2 mb-8 text-sm">
@@ -86,7 +102,8 @@ export default function RoleSelectionPage() {
 
               <h2 className="text-2xl font-bold mb-2">I Want to Teach</h2>
               <p className="text-muted-foreground mb-6">
-                Share your expertise with builders worldwide, set your own rates, and grow your reputation with ratings and reviews.
+                Share your expertise with builders worldwide, set your own
+                rates, and grow your reputation with ratings and reviews.
               </p>
 
               <ul className="space-y-2 mb-8 text-sm">
@@ -115,19 +132,12 @@ export default function RoleSelectionPage() {
             </button>
           </div>
 
-          {/* Wallet Info */}
-          <div className="mt-12 flex flex-col items-center gap-4 rounded-lg border border-border bg-muted/30 p-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Wallet className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Wallet Connection
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Wallet auth is disabled in this demo build. The “Connect Wallet” button in the header is static.
-              </p>
-            </div>
+          {/* Connected Address Info */}
+          <div className="mt-12 p-6 rounded-lg bg-muted/50 border border-border text-center">
+            <p className="text-sm text-muted-foreground mb-2">
+              Connected Wallet
+            </p>
+            <p className="font-mono text-sm break-all">{address}</p>
           </div>
         </div>
       </main>

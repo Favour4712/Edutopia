@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-
 export function Navbar() {
   return (
     <nav className="border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 sticky top-0 z-50">
@@ -41,13 +39,7 @@ export function Navbar() {
 
         {/* Wallet Connection */}
         <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="border-border bg-card text-sm font-semibold text-foreground shadow-sm hover:bg-primary/10"
-          >
-            Connect Wallet
-          </Button>
+          <appkit-button />
         </div>
       </div>
     </nav>

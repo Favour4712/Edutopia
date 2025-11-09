@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Search, Filter } from "lucide-react"
 
-// Mock tutor data
+// Mock mentor data
 const MOCK_TUTORS = [
   {
     id: "1",
@@ -63,7 +63,6 @@ export default function BrowseTutorsPage() {
   const [minRating, setMinRating] = useState(4)
   const [showFilters, setShowFilters] = useState(false)
 
-  // Filter tutors based on search and filters
   const filteredTutors = MOCK_TUTORS.filter((tutor) => {
     const matchesSearch =
       tutor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -82,14 +81,11 @@ export default function BrowseTutorsPage() {
 
   return (
     <div className="w-full">
-      {/* Header */}
-      <div className="p-6 border-b border-border">
-        <h1 className="text-3xl font-bold mb-4">Find Web3 Mentors</h1>
-
-        {/* Search Bar */}
+      <div className="border-b border-border p-6">
+        <h1 className="mb-4 text-3xl font-bold">Find Web3 Mentors</h1>
         <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <div className="relative flex-1">
+            <Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
             <Input
               placeholder="Search by protocol, skill, or mentor..."
               value={searchQuery}
@@ -98,28 +94,27 @@ export default function BrowseTutorsPage() {
             />
           </div>
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="lg:hidden">
-            <Filter className="w-4 h-4" />
+            <Filter className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       <div className="flex">
-        {/* Sidebar Filters - Hidden on mobile, visible on desktop */}
         <div
-          className={`${showFilters ? "block" : "hidden"} lg:block w-64 border-r border-border p-6 space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto`}
+          className={`${showFilters ? "block" : "hidden"} lg:block w-64 space-y-6 border-r border-border p-6 max-h-[calc(100vh-120px)] overflow-y-auto`}
         >
           <div>
-            <h3 className="font-semibold mb-3">Subject</h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <h3 className="mb-3 font-semibold">Subject</h3>
+            <div className="max-h-48 space-y-2 overflow-y-auto">
               {SUBJECTS.map((subject) => (
-                <label key={subject} className="flex items-center gap-2 cursor-pointer">
+                <label key={subject} className="flex cursor-pointer items-center gap-2">
                   <input
                     type="radio"
                     name="subject"
                     value={subject}
                     checked={selectedSubject === subject}
                     onChange={(e) => setSelectedSubject(e.target.checked ? subject : null)}
-                    className="w-4 h-4"
+                    className="h-4 w-4"
                   />
                   <span className="text-sm">{subject}</span>
                 </label>
@@ -128,7 +123,7 @@ export default function BrowseTutorsPage() {
           </div>
 
           <div>
-            <h3 className="font-semibold mb-3">Hourly Rate (ETH)</h3>
+            <h3 className="mb-3 font-semibold">Hourly Rate (ETH)</h3>
             <Slider value={priceRange} onValueChange={setPriceRange} min={0} max={1} step={0.05} className="mb-2" />
             <div className="text-sm text-muted-foreground">
               {priceRange[0].toFixed(2)} - {priceRange[1].toFixed(2)} ETH
@@ -136,10 +131,49 @@ export default function BrowseTutorsPage() {
           </div>
 
           <div>
-            <h3 className="font-semibold mb-3">Minimum Rating</h3>
+            <h3 className="mb-3 font-semibold">Minimum Rating</h3>
             <div className="flex gap-2">
               {[4, 4.5, 4.7, 5].map((rating) => (
                 <button
                   key={rating}
                   onClick={() => setMinRating(rating)}
-                  className={`
+                  className={`rounded px-3 py-2 text-sm font-medium transition-colors ${
+                    minRating === rating
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted/80"
+                  }`}
+                >
+                  {rating}+
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 p-6">
+          {filteredTutors.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredTutors.map((tutor) => (
+                <TutorCard key={tutor.id} tutor={tutor} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-12 text-center">
+              <p className="mb-4 text-muted-foreground">No mentors found matching your filters</p>
+              <Button
+                onClick={() => {
+                  setSearchQuery("")
+                  setSelectedSubject(null)
+                  setPriceRange([0, 1])
+                  setMinRating(4)
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
