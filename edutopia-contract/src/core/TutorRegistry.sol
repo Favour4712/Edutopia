@@ -13,6 +13,9 @@ contract TutorRegistry is ITutorRegistry {
     /// @notice Mapping of tutor address to their profile
     mapping(address => TutorProfile) private tutorProfiles;
 
+    /// @notice Array of all registered tutor addresses (for enumeration)
+    address[] private tutorIndex;
+
     /// @notice Mapping to track which students have rated which tutors for which sessions
     mapping(address => mapping(uint256 => bool)) private sessionRatings;
 
@@ -58,17 +61,28 @@ contract TutorRegistry is ITutorRegistry {
     // ============ External Functions ============
 
     /// @inheritdoc ITutorRegistry
-    function registerTutor(string[] calldata subjects, uint256 hourlyRate) external override {
+    function registerTutor(
+        string[] calldata subjects,
+        uint256 hourlyRate
+    ) external override {
         _registerTutor(msg.sender, subjects, hourlyRate);
     }
 
     /// @inheritdoc ITutorRegistry
-    function registerTutorFor(address tutor, string[] calldata subjects, uint256 hourlyRate) external override {
+    function registerTutorFor(
+        address tutor,
+        string[] calldata subjects,
+        uint256 hourlyRate
+    ) external override {
         _registerTutor(tutor, subjects, hourlyRate);
     }
 
     /// @notice Internal function to register a tutor
-    function _registerTutor(address tutor, string[] calldata subjects, uint256 hourlyRate) internal {
+    function _registerTutor(
+        address tutor,
+        string[] calldata subjects,
+        uint256 hourlyRate
+    ) internal {
         if (tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorAlreadyRegistered();
         }
@@ -89,11 +103,15 @@ contract TutorRegistry is ITutorRegistry {
             registeredAt: block.timestamp
         });
 
+        tutorIndex.push(tutor);
+
         emit Events.TutorRegistered(tutor, subjects, hourlyRate);
     }
 
     /// @inheritdoc ITutorRegistry
-    function updateHourlyRate(uint256 newRate) external override onlyRegisteredTutor {
+    function updateHourlyRate(
+        uint256 newRate
+    ) external override onlyRegisteredTutor {
         if (newRate < MIN_HOURLY_RATE || newRate > MAX_HOURLY_RATE) {
             revert Errors.InvalidHourlyRate();
         }
@@ -104,7 +122,11 @@ contract TutorRegistry is ITutorRegistry {
     }
 
     /// @inheritdoc ITutorRegistry
-    function rateTutor(address tutor, uint256 sessionId, uint256 rating) external override {
+    function rateTutor(
+        address tutor,
+        uint256 sessionId,
+        uint256 rating
+    ) external override {
         if (!tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorNotRegistered();
         }
@@ -129,7 +151,9 @@ contract TutorRegistry is ITutorRegistry {
     }
 
     /// @inheritdoc ITutorRegistry
-    function incrementSessionCount(address tutor) external override onlySessionEscrow {
+    function incrementSessionCount(
+        address tutor
+    ) external override onlySessionEscrow {
         if (!tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorNotRegistered();
         }
@@ -153,21 +177,62 @@ contract TutorRegistry is ITutorRegistry {
     // ============ View Functions ============
 
     /// @inheritdoc ITutorRegistry
-    function getTutorProfile(address tutor) external view override returns (TutorProfile memory) {
+    function getTutorProfile(
+        address tutor
+    ) external view override returns (TutorProfile memory) {
         return tutorProfiles[tutor];
     }
 
     /// @inheritdoc ITutorRegistry
-    function isTutorRegistered(address tutor) external view override returns (bool) {
+    function isTutorRegistered(
+        address tutor
+    ) external view override returns (bool) {
         return tutorProfiles[tutor].isRegistered;
     }
 
     /// @inheritdoc ITutorRegistry
-    function getTutorRating(address tutor) external view override returns (uint256) {
+    function getTutorRating(
+        address tutor
+    ) external view override returns (uint256) {
         if (tutorProfiles[tutor].ratingCount == 0) {
             return 0;
         }
         // Return average rating scaled by 100 (e.g., 450 = 4.50 stars)
-        return (tutorProfiles[tutor].totalRating * 100) / tutorProfiles[tutor].ratingCount;
+        return
+            (tutorProfiles[tutor].totalRating * 100) /
+            tutorProfiles[tutor].ratingCount;
+    }
+
+    /// @inheritdoc ITutorRegistry
+    function getTutorCount() external view override returns (uint256) {
+        return tutorIndex.length;
+    }
+
+    /// @inheritdoc ITutorRegistry
+    function getAllTutors() external view override returns (address[] memory) {
+        return tutorIndex;
+    }
+
+    /// @inheritdoc ITutorRegistry
+    function getTutorAddresses(
+        uint256 offset,
+        uint256 limit
+    ) external view override returns (address[] memory) {
+        uint256 total = tutorIndex.length;
+        if (offset >= total) {
+            return new address[](0);
+        }
+
+        uint256 end = limit == 0 ? total : offset + limit;
+        if (end > total) {
+            end = total;
+        }
+
+        uint256 length = end - offset;
+        address[] memory tutors = new address[](length);
+        for (uint256 i = 0; i < length; i++) {
+            tutors[i] = tutorIndex[offset + i];
+        }
+        return tutors;
     }
 }

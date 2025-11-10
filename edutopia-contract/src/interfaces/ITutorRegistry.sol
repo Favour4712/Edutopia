@@ -54,5 +54,19 @@ interface ITutorRegistry {
     /// @param tutor Address of the tutor
     /// @return uint256 Average rating (scaled by 100)
     function getTutorRating(address tutor) external view returns (uint256);
+
+    /// @notice Get total number of registered tutors
+    /// @return uint256 Tutor count
+    function getTutorCount() external view returns (uint256);
+
+    /// @notice Get all registered tutor addresses
+    /// @return address[] Array of tutor addresses
+    function getAllTutors() external view returns (address[] memory);
+
+    /// @notice Get a slice of registered tutors for pagination
+    /// @param offset Starting index within the tutor list
+    /// @param limit Maximum number of tutors to return (0 = all remaining)
+    /// @return address[] Slice of tutor addresses
+    function getTutorAddresses(uint256 offset, uint256 limit) external view returns (address[] memory);
 }
 

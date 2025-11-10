@@ -31,7 +31,9 @@ contract TutorRegistryTest is Test {
         vm.prank(tutor1);
         registry.registerTutor(subjects, HOURLY_RATE);
 
-        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(tutor1);
+        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(
+            tutor1
+        );
 
         assertTrue(profile.isRegistered);
         assertEq(profile.subjects.length, 3);
@@ -48,6 +50,32 @@ contract TutorRegistryTest is Test {
         vm.expectRevert(Errors.TutorAlreadyRegistered.selector);
         registry.registerTutor(subjects, HOURLY_RATE);
         vm.stopPrank();
+    }
+
+    function test_GetTutorEnumeration() public {
+        vm.prank(tutor1);
+        registry.registerTutor(subjects, HOURLY_RATE);
+
+        vm.prank(tutor2);
+        registry.registerTutor(subjects, HOURLY_RATE);
+
+        assertEq(registry.getTutorCount(), 2);
+
+        address[] memory allTutors = registry.getAllTutors();
+        assertEq(allTutors.length, 2);
+        assertEq(allTutors[0], tutor1);
+        assertEq(allTutors[1], tutor2);
+
+        address[] memory slice = registry.getTutorAddresses(1, 1);
+        assertEq(slice.length, 1);
+        assertEq(slice[0], tutor2);
+
+        address[] memory remainder = registry.getTutorAddresses(1, 0);
+        assertEq(remainder.length, 1);
+        assertEq(remainder[0], tutor2);
+
+        address[] memory empty = registry.getTutorAddresses(5, 2);
+        assertEq(empty.length, 0);
     }
 
     function test_RevertWhen_EmptySubjects() public {
@@ -79,7 +107,9 @@ contract TutorRegistryTest is Test {
         uint256 newRate = 75 * 1e6;
         registry.updateHourlyRate(newRate);
 
-        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(tutor1);
+        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(
+            tutor1
+        );
         assertEq(profile.hourlyRate, newRate);
         vm.stopPrank();
     }
@@ -96,7 +126,9 @@ contract TutorRegistryTest is Test {
         vm.prank(student);
         registry.rateTutor(tutor1, sessionId, rating);
 
-        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(tutor1);
+        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(
+            tutor1
+        );
         assertEq(profile.totalRating, rating);
         assertEq(profile.ratingCount, 1);
 
@@ -135,7 +167,9 @@ contract TutorRegistryTest is Test {
         vm.prank(sessionEscrow);
         registry.incrementSessionCount(tutor1);
 
-        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(tutor1);
+        ITutorRegistry.TutorProfile memory profile = registry.getTutorProfile(
+            tutor1
+        );
         assertEq(profile.totalSessions, 1);
     }
 
@@ -161,4 +195,3 @@ contract TutorRegistryTest is Test {
         assertEq(avgRating, rating * 100);
     }
 }
-
