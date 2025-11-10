@@ -1,19 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   useAccount,
+  usePublicClient,
   useReadContract,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 import type { Address, Hash } from "viem";
+import { parseAbiItem } from "viem";
 import type { ExtractAbiFunctionNames } from "viem";
 
-import { peerLearningHubContract } from "@/lib/web3/contracts";
-import { fromUsdcUnits, hoursToSeconds, toUsdcUnits } from "@/lib/web3/utils";
+import {
+  peerLearningHubContract,
+  tutorRegistryContract,
+} from "@/lib/web3/contracts";
+import {
+  fromUsdcUnits,
+  hoursToSeconds,
+  toUsdcUnits,
+} from "@/lib/web3/utils";
 
-type TutorProfile = {
+export type TutorProfile = {
   isRegistered: boolean;
   subjects: string[];
   hourlyRate: bigint;
@@ -21,6 +35,17 @@ type TutorProfile = {
   totalRating: bigint;
   ratingCount: bigint;
   registeredAt: bigint;
+};
+
+export type TutorDirectoryEntry = {
+  address: Address;
+  subjects: string[];
+  hourlyRate: number;
+  totalSessions: number;
+  averageRating: number;
+  ratingCount: number;
+  registeredAt: number;
+  raw: TutorProfile;
 };
 
 export function useTutorProfile(tutorAddress?: Address) {
@@ -167,7 +192,7 @@ export function useBookSession() {
       params.tutor,
       hoursToSeconds(params.durationHours),
       params.subject,
-      params.description ?? ""
+      params.description ?? "",
     );
     return txHash;
   };
@@ -220,4 +245,145 @@ export function useReleasePayment() {
   };
 }
 
+const tutorRegisteredEvent = parseAbiItem(
+  "event TutorRegistered(address indexed tutor, string[] subjects, uint256 hourlyRate)",
+);
 
+export function useTutorDirectory() {
+  const client = usePublicClient({ chainId: tutorRegistryContract.chainId });
+  const [entries, setEntries] = useState<TutorDirectoryEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!client) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const latestBlock = await client.getBlockNumber();
+      const deploymentBlockEnv = process.env.NEXT_PUBLIC_TUTOR_REGISTRY_DEPLOYMENT_BLOCK;
+      const deploymentBlock = deploymentBlockEnv ? BigInt(deploymentBlockEnv) : 0n;
+      const chunkSize = 5_000n;
+
+      type LogsResult = Awaited<ReturnType<typeof client.getLogs>>;
+      let currentFrom = deploymentBlock;
+      const aggregatedLogs: LogsResult = [];
+
+      while (currentFrom <= latestBlock) {
+        const currentTo = currentFrom + chunkSize;
+        const toBlock = currentTo > latestBlock ? latestBlock : currentTo;
+
+        const slice = await client.getLogs({
+          address: tutorRegistryContract.address,
+          event: tutorRegisteredEvent,
+          fromBlock: currentFrom,
+          toBlock,
+        });
+
+        aggregatedLogs.push(...slice);
+
+        if (toBlock === latestBlock) {
+          break;
+        }
+
+        currentFrom = toBlock + 1n;
+      }
+
+      const logs = aggregatedLogs;
+
+      const uniqueAddresses = Array.from(
+        new Set(
+          logs
+            .map((log) => log.args?.tutor as Address | undefined)
+            .filter((address): address is Address => Boolean(address)),
+        ),
+      );
+
+      if (uniqueAddresses.length === 0) {
+        setEntries([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const directory = await Promise.all(
+        uniqueAddresses.map(async (address) => {
+          const profile = (await client.readContract({
+            ...tutorRegistryContract,
+            functionName: "getTutorProfile",
+            args: [address],
+          })) as TutorProfile;
+
+          if (!profile?.isRegistered) {
+            return null;
+          }
+
+          const ratingRaw = (await client.readContract({
+            ...tutorRegistryContract,
+            functionName: "getTutorRating",
+            args: [address],
+          })) as bigint;
+
+          const hourlyRate = fromUsdcUnits(profile.hourlyRate);
+          const totalSessions = Number(profile.totalSessions);
+          const ratingCount = Number(profile.ratingCount);
+          const averageRating =
+            ratingCount > 0 ? Number(ratingRaw) / 100 : 0;
+          const registeredAt = Number(profile.registeredAt);
+
+          return {
+            address,
+            subjects: profile.subjects,
+            hourlyRate,
+            totalSessions,
+            averageRating,
+            ratingCount,
+            registeredAt,
+            raw: profile,
+          } satisfies TutorDirectoryEntry;
+        }),
+      );
+
+      setEntries(directory.filter(Boolean) as TutorDirectoryEntry[]);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    if (!client) {
+      return;
+    }
+
+    let cancelled = false;
+    refresh();
+
+    const unwatch = client.watchContractEvent({
+      address: tutorRegistryContract.address,
+      abi: tutorRegistryContract.abi,
+      eventName: "TutorRegistered",
+      onLogs: () => {
+        if (!cancelled) {
+          refresh();
+        }
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      unwatch?.();
+    };
+  }, [client, refresh]);
+
+  return {
+    tutors: entries,
+    isLoading,
+    error,
+    refetch: refresh,
+  };
+}
