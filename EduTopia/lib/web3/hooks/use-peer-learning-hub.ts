@@ -279,16 +279,11 @@ export function useTutorDirectory() {
             return null;
           }
 
-          const ratingRaw = (await client.readContract({
-            ...peerLearningHubContract,
-            functionName: "getTutorRating",
-            args: [address],
-          })) as bigint;
-
           const hourlyRate = fromUsdcUnits(profile.hourlyRate);
           const totalSessions = Number(profile.totalSessions);
           const ratingCount = Number(profile.ratingCount);
-          const averageRating = ratingCount > 0 ? Number(ratingRaw) / 100 : 0;
+          const totalRating = Number(profile.totalRating);
+          const averageRating = ratingCount > 0 ? totalRating / ratingCount : 0;
           const registeredAt = Number(profile.registeredAt);
 
           return {
