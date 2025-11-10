@@ -1,3 +1,6 @@
 [submodule "edutopia-contract/lib/forge-std"]
 	path = edutopia-contract/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "edutopia-contract/lib/openzeppelin-contracts"]
+	path = edutopia-contract/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
