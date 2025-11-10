@@ -67,8 +67,11 @@ contract PeerLearningHub {
         address _paymentToken
     ) {
         if (
-            _tutorRegistry == address(0) || _sessionEscrow == address(0) || _disputeResolver == address(0)
-                || _certificateNFT == address(0) || _paymentToken == address(0)
+            _tutorRegistry == address(0) ||
+            _sessionEscrow == address(0) ||
+            _disputeResolver == address(0) ||
+            _certificateNFT == address(0) ||
+            _paymentToken == address(0)
         ) {
             revert Errors.ZeroAddress();
         }
@@ -81,7 +84,14 @@ contract PeerLearningHub {
         certificateNFT = ICertificateNFT(_certificateNFT);
         paymentToken = IERC20(_paymentToken);
 
-        emit HubDeployed(msg.sender, _tutorRegistry, _sessionEscrow, _disputeResolver, _certificateNFT, _paymentToken);
+        emit HubDeployed(
+            msg.sender,
+            _tutorRegistry,
+            _sessionEscrow,
+            _disputeResolver,
+            _certificateNFT,
+            _paymentToken
+        );
     }
 
     // ============ Tutor Functions ============
@@ -89,7 +99,10 @@ contract PeerLearningHub {
     /// @notice Register as a tutor
     /// @param subjects Array of subjects to teach
     /// @param hourlyRate Hourly rate denominated in the platform payment token (6 decimals)
-    function registerAsTutor(string[] calldata subjects, uint256 hourlyRate) external {
+    function registerAsTutor(
+        string[] calldata subjects,
+        uint256 hourlyRate
+    ) external {
         tutorRegistry.registerTutorFor(msg.sender, subjects, hourlyRate);
     }
 
@@ -102,15 +115,44 @@ contract PeerLearningHub {
     /// @notice Get tutor profile
     /// @param tutor Tutor address
     /// @return ITutorRegistry.TutorProfile Tutor profile data
-    function getTutorProfile(address tutor) external view returns (ITutorRegistry.TutorProfile memory) {
+    function getTutorProfile(
+        address tutor
+    ) external view returns (ITutorRegistry.TutorProfile memory) {
         return tutorRegistry.getTutorProfile(tutor);
+    }
+
+    /// @notice Get total number of registered tutors
+    /// @return uint256 Tutor count
+    function getTutorCount() external view returns (uint256) {
+        return tutorRegistry.getTutorCount();
+    }
+
+    /// @notice Get all registered tutor addresses
+    /// @return address[] Tutor addresses
+    function getAllTutors() external view returns (address[] memory) {
+        return tutorRegistry.getAllTutors();
+    }
+
+    /// @notice Get paginated tutor addresses
+    /// @param offset Starting index
+    /// @param limit Maximum number of tutors to return (0 = all remaining)
+    /// @return address[] Tutor address slice
+    function getTutorAddresses(
+        uint256 offset,
+        uint256 limit
+    ) external view returns (address[] memory) {
+        return tutorRegistry.getTutorAddresses(offset, limit);
     }
 
     /// @notice Rate a tutor
     /// @param tutor Tutor address
     /// @param sessionId Session ID
     /// @param rating Rating (1-5)
-    function rateTutor(address tutor, uint256 sessionId, uint256 rating) external {
+    function rateTutor(
+        address tutor,
+        uint256 sessionId,
+        uint256 rating
+    ) external {
         tutorRegistry.rateTutor(tutor, sessionId, rating);
     }
 
@@ -122,11 +164,20 @@ contract PeerLearningHub {
     /// @param subject Subject being taught
     /// @param description Session description
     /// @return sessionId Created session ID
-    function bookSession(address tutor, uint256 duration, string calldata subject, string calldata description)
-        external
-        returns (uint256 sessionId)
-    {
-        return sessionEscrow.createSessionFor(msg.sender, tutor, duration, subject, description);
+    function bookSession(
+        address tutor,
+        uint256 duration,
+        string calldata subject,
+        string calldata description
+    ) external returns (uint256 sessionId) {
+        return
+            sessionEscrow.createSessionFor(
+                msg.sender,
+                tutor,
+                duration,
+                subject,
+                description
+            );
     }
 
     /// @notice Complete a session
@@ -150,14 +201,18 @@ contract PeerLearningHub {
     /// @notice Get session details
     /// @param sessionId Session ID
     /// @return SessionLib.Session Session data
-    function getSession(uint256 sessionId) external view returns (SessionLib.Session memory) {
+    function getSession(
+        uint256 sessionId
+    ) external view returns (SessionLib.Session memory) {
         return sessionEscrow.getSession(sessionId);
     }
 
     /// @notice Get session metadata
     /// @param sessionId Session ID
     /// @return SessionLib.SessionMetadata Session metadata
-    function getSessionMetadata(uint256 sessionId) external view returns (SessionLib.SessionMetadata memory) {
+    function getSessionMetadata(
+        uint256 sessionId
+    ) external view returns (SessionLib.SessionMetadata memory) {
         return sessionEscrow.getSessionMetadata(sessionId);
     }
 
@@ -174,31 +229,45 @@ contract PeerLearningHub {
     /// @param reason Dispute reason
     /// @param evidence Evidence (IPFS hash)
     /// @return disputeId Created dispute ID
-    function raiseDispute(uint256 sessionId, string calldata reason, string calldata evidence)
-        external
-        returns (uint256 disputeId)
-    {
-        return disputeResolver.raiseDisputeFor(msg.sender, sessionId, reason, evidence);
+    function raiseDispute(
+        uint256 sessionId,
+        string calldata reason,
+        string calldata evidence
+    ) external returns (uint256 disputeId) {
+        return
+            disputeResolver.raiseDisputeFor(
+                msg.sender,
+                sessionId,
+                reason,
+                evidence
+            );
     }
 
     /// @notice Submit additional evidence
     /// @param disputeId Dispute ID
     /// @param evidence Evidence (IPFS hash)
-    function submitDisputeEvidence(uint256 disputeId, string calldata evidence) external {
+    function submitDisputeEvidence(
+        uint256 disputeId,
+        string calldata evidence
+    ) external {
         disputeResolver.submitEvidence(disputeId, evidence);
     }
 
     /// @notice Get dispute details
     /// @param disputeId Dispute ID
     /// @return DisputeLib.Dispute Dispute data
-    function getDispute(uint256 disputeId) external view returns (DisputeLib.Dispute memory) {
+    function getDispute(
+        uint256 disputeId
+    ) external view returns (DisputeLib.Dispute memory) {
         return disputeResolver.getDispute(disputeId);
     }
 
     /// @notice Get dispute for a session
     /// @param sessionId Session ID
     /// @return uint256 Dispute ID
-    function getSessionDispute(uint256 sessionId) external view returns (uint256) {
+    function getSessionDispute(
+        uint256 sessionId
+    ) external view returns (uint256) {
         return disputeResolver.getDisputeBySession(sessionId);
     }
 
@@ -209,24 +278,35 @@ contract PeerLearningHub {
     /// @param subject Subject
     /// @param metadataURI Metadata URI (IPFS hash)
     /// @return tokenId Minted certificate token ID
-    function mintCertificate(uint256 sessionId, string calldata subject, string calldata metadataURI)
-        external
-        returns (uint256 tokenId)
-    {
-        return certificateNFT.mintCertificateFor(msg.sender, sessionId, subject, metadataURI);
+    function mintCertificate(
+        uint256 sessionId,
+        string calldata subject,
+        string calldata metadataURI
+    ) external returns (uint256 tokenId) {
+        return
+            certificateNFT.mintCertificateFor(
+                msg.sender,
+                sessionId,
+                subject,
+                metadataURI
+            );
     }
 
     /// @notice Get certificate details
     /// @param tokenId Certificate token ID
     /// @return ICertificateNFT.CertificateMetadata Certificate data
-    function getCertificate(uint256 tokenId) external view returns (ICertificateNFT.CertificateMetadata memory) {
+    function getCertificate(
+        uint256 tokenId
+    ) external view returns (ICertificateNFT.CertificateMetadata memory) {
         return certificateNFT.getCertificate(tokenId);
     }
 
     /// @notice Get all certificates for a student
     /// @param student Student address
     /// @return uint256[] Array of certificate token IDs
-    function getStudentCertificates(address student) external view returns (uint256[] memory) {
+    function getStudentCertificates(
+        address student
+    ) external view returns (uint256[] memory) {
         return certificateNFT.getStudentCertificates(student);
     }
 
@@ -246,7 +326,11 @@ contract PeerLearningHub {
     function getPlatformStats()
         external
         view
-        returns (uint256 totalSessions, uint256 totalDisputes, uint256 totalCertificates)
+        returns (
+            uint256 totalSessions,
+            uint256 totalDisputes,
+            uint256 totalCertificates
+        )
     {
         totalSessions = sessionEscrow.getTotalSessions();
         totalDisputes = disputeResolver.getTotalDisputes();
@@ -287,7 +371,9 @@ contract PeerLearningHub {
             revert Errors.UnauthorizedAccess();
         }
         // Call addArbiter on DisputeResolver
-        (bool success,) = address(disputeResolver).call(abi.encodeWithSignature("addArbiter(address)", arbiter));
+        (bool success, ) = address(disputeResolver).call(
+            abi.encodeWithSignature("addArbiter(address)", arbiter)
+        );
         require(success, "Failed to add arbiter");
     }
 
@@ -296,7 +382,9 @@ contract PeerLearningHub {
         if (msg.sender != owner) {
             revert Errors.UnauthorizedAccess();
         }
-        (bool success,) = address(sessionEscrow).call(abi.encodeWithSignature("pause()"));
+        (bool success, ) = address(sessionEscrow).call(
+            abi.encodeWithSignature("pause()")
+        );
         require(success, "Failed to pause");
     }
 
@@ -305,7 +393,9 @@ contract PeerLearningHub {
         if (msg.sender != owner) {
             revert Errors.UnauthorizedAccess();
         }
-        (bool success,) = address(sessionEscrow).call(abi.encodeWithSignature("unpause()"));
+        (bool success, ) = address(sessionEscrow).call(
+            abi.encodeWithSignature("unpause()")
+        );
         require(success, "Failed to unpause");
     }
 }
