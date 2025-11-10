@@ -6,10 +6,16 @@ import {ITutorRegistry} from "../interfaces/ITutorRegistry.sol";
 import {SessionLib} from "../libraries/SessionLib.sol";
 import {Errors} from "../utils/Errors.sol";
 import {Events} from "../utils/Events.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title SessionEscrow
 /// @notice Manages session creation, escrow, and payment release
-contract SessionEscrow is ISessionEscrow {
+contract SessionEscrow is ISessionEscrow, ReentrancyGuard, Ownable, Pausable {
+    using SafeERC20 for IERC20;
     using SessionLib for SessionLib.Session;
 
     // ============ State Variables ============
@@ -20,8 +26,8 @@ contract SessionEscrow is ISessionEscrow {
     /// @notice Dispute resolver contract address
     address public disputeResolver;
 
-    /// @notice Platform owner address
-    address public platformOwner;
+    /// @notice Payment token (e.g., USDC)
+    IERC20 public immutable paymentToken;
 
     /// @notice Mapping of session ID to session data
     mapping(uint256 => SessionLib.Session) private sessions;
@@ -50,24 +56,7 @@ contract SessionEscrow is ISessionEscrow {
     /// @notice Maximum session duration (8 hours)
     uint256 public constant MAX_SESSION_DURATION = 8 hours;
 
-    /// @notice Contract paused state
-    bool public paused;
-
     // ============ Modifiers ============
-
-    modifier whenNotPaused() {
-        if (paused) {
-            revert Errors.ContractPaused();
-        }
-        _;
-    }
-
-    modifier onlyPlatformOwner() {
-        if (msg.sender != platformOwner) {
-            revert Errors.UnauthorizedAccess();
-        }
-        _;
-    }
 
     modifier onlyDisputeResolver() {
         if (msg.sender != disputeResolver) {
@@ -78,13 +67,16 @@ contract SessionEscrow is ISessionEscrow {
 
     // ============ Constructor ============
 
-    constructor(address _tutorRegistry) {
-        if (_tutorRegistry == address(0)) {
+    constructor(
+        address _tutorRegistry,
+        address _paymentToken
+    ) Ownable(msg.sender) {
+        if (_tutorRegistry == address(0) || _paymentToken == address(0)) {
             revert Errors.ZeroAddress();
         }
 
         tutorRegistry = ITutorRegistry(_tutorRegistry);
-        platformOwner = msg.sender;
+        paymentToken = IERC20(_paymentToken);
     }
 
     // ============ External Functions ============
@@ -95,12 +87,35 @@ contract SessionEscrow is ISessionEscrow {
         uint256 duration,
         string calldata subject,
         string calldata description
-    ) external payable override whenNotPaused returns (uint256 sessionId) {
+    ) external override whenNotPaused returns (uint256 sessionId) {
+        return
+            _createSession(msg.sender, tutor, duration, subject, description);
+    }
+
+    /// @inheritdoc ISessionEscrow
+    function createSessionFor(
+        address student,
+        address tutor,
+        uint256 duration,
+        string calldata subject,
+        string calldata description
+    ) external override whenNotPaused returns (uint256 sessionId) {
+        return _createSession(student, tutor, duration, subject, description);
+    }
+
+    /// @notice Internal function to create a session
+    function _createSession(
+        address student,
+        address tutor,
+        uint256 duration,
+        string calldata subject,
+        string calldata description
+    ) internal returns (uint256 sessionId) {
         // Validations
         if (tutor == address(0)) {
             revert Errors.ZeroAddress();
         }
-        if (tutor == msg.sender) {
+        if (tutor == student) {
             revert Errors.UnauthorizedAccess();
         }
         if (!tutorRegistry.isTutorRegistered(tutor)) {
@@ -111,19 +126,26 @@ contract SessionEscrow is ISessionEscrow {
         ) {
             revert Errors.InvalidDuration();
         }
-        if (msg.value == 0) {
-            revert Errors.InsufficientPayment();
-        }
-
         // Get tutor's hourly rate
         ITutorRegistry.TutorProfile memory tutorProfile = tutorRegistry
             .getTutorProfile(tutor);
         uint256 expectedPayment = (tutorProfile.hourlyRate * duration) /
             1 hours;
 
-        if (msg.value < expectedPayment) {
+        if (expectedPayment == 0) {
+            revert Errors.InvalidAmount();
+        }
+
+        if (paymentToken.balanceOf(student) < expectedPayment) {
             revert Errors.InsufficientPayment();
         }
+
+        // Collect payment in stablecoin
+        if (paymentToken.allowance(student, address(this)) < expectedPayment) {
+            revert Errors.InsufficientAllowance();
+        }
+
+        paymentToken.safeTransferFrom(student, address(this), expectedPayment);
 
         // Create session
         sessionCounter++;
@@ -131,9 +153,9 @@ contract SessionEscrow is ISessionEscrow {
 
         sessions[sessionId] = SessionLib.Session({
             id: sessionId,
-            student: msg.sender,
+            student: student,
             tutor: tutor,
-            amount: msg.value,
+            amount: expectedPayment,
             startTime: block.timestamp,
             duration: duration,
             status: SessionLib.SessionStatus.Active,
@@ -150,9 +172,9 @@ contract SessionEscrow is ISessionEscrow {
 
         emit Events.SessionCreated(
             sessionId,
-            msg.sender,
+            student,
             tutor,
-            msg.value,
+            expectedPayment,
             block.timestamp,
             duration
         );
@@ -164,12 +186,25 @@ contract SessionEscrow is ISessionEscrow {
     function completeSession(
         uint256 sessionId
     ) external override whenNotPaused {
+        _completeSession(msg.sender, sessionId);
+    }
+
+    /// @inheritdoc ISessionEscrow
+    function completeSessionFor(
+        address caller,
+        uint256 sessionId
+    ) external override whenNotPaused {
+        _completeSession(caller, sessionId);
+    }
+
+    /// @notice Internal function to complete a session
+    function _completeSession(address caller, uint256 sessionId) internal {
         SessionLib.Session storage session = sessions[sessionId];
 
         if (session.id == 0) {
             revert Errors.SessionNotFound();
         }
-        if (msg.sender != session.tutor && msg.sender != session.student) {
+        if (caller != session.tutor && caller != session.student) {
             revert Errors.UnauthorizedAccess();
         }
         if (session.status != SessionLib.SessionStatus.Active) {
@@ -194,13 +229,28 @@ contract SessionEscrow is ISessionEscrow {
     }
 
     /// @inheritdoc ISessionEscrow
-    function cancelSession(uint256 sessionId) external override whenNotPaused {
+    function cancelSession(
+        uint256 sessionId
+    ) external override whenNotPaused nonReentrant {
+        _cancelSession(msg.sender, sessionId);
+    }
+
+    /// @inheritdoc ISessionEscrow
+    function cancelSessionFor(
+        address caller,
+        uint256 sessionId
+    ) external override whenNotPaused nonReentrant {
+        _cancelSession(caller, sessionId);
+    }
+
+    /// @notice Internal function to cancel a session
+    function _cancelSession(address caller, uint256 sessionId) internal {
         SessionLib.Session storage session = sessions[sessionId];
 
         if (session.id == 0) {
             revert Errors.SessionNotFound();
         }
-        if (msg.sender != session.student && msg.sender != session.tutor) {
+        if (caller != session.student && caller != session.tutor) {
             revert Errors.UnauthorizedAccess();
         }
         if (!session.canCancel()) {
@@ -213,21 +263,20 @@ contract SessionEscrow is ISessionEscrow {
         uint256 refundAmount = session.amount;
         session.amount = 0;
 
-        (bool success, ) = payable(session.student).call{value: refundAmount}(
-            ""
-        );
-        require(success, "Refund failed");
+        paymentToken.safeTransfer(session.student, refundAmount);
 
         emit Events.SessionCancelled(
             sessionId,
-            msg.sender,
+            caller,
             refundAmount,
             "Session cancelled before start"
         );
     }
 
     /// @inheritdoc ISessionEscrow
-    function releasePayment(uint256 sessionId) external override whenNotPaused {
+    function releasePayment(
+        uint256 sessionId
+    ) external override whenNotPaused nonReentrant {
         SessionLib.Session storage session = sessions[sessionId];
 
         if (session.id == 0) {
@@ -249,8 +298,7 @@ contract SessionEscrow is ISessionEscrow {
         accumulatedFees += fee;
 
         // Transfer payment to tutor
-        (bool success, ) = payable(session.tutor).call{value: tutorPayment}("");
-        require(success, "Payment transfer failed");
+        paymentToken.safeTransfer(session.tutor, tutorPayment);
 
         emit Events.PaymentReleased(
             sessionId,
@@ -279,7 +327,7 @@ contract SessionEscrow is ISessionEscrow {
         uint256 sessionId,
         bool refundToStudent,
         uint256 refundAmount
-    ) external override onlyDisputeResolver {
+    ) external override onlyDisputeResolver nonReentrant {
         SessionLib.Session storage session = sessions[sessionId];
 
         if (session.id == 0) {
@@ -294,18 +342,12 @@ contract SessionEscrow is ISessionEscrow {
 
         if (refundToStudent) {
             // Refund to student
-            (bool success, ) = payable(session.student).call{
-                value: refundAmount
-            }("");
-            require(success, "Refund failed");
+            paymentToken.safeTransfer(session.student, refundAmount);
 
             // Pay remaining to tutor if split
             if (refundAmount < session.amount) {
                 uint256 tutorAmount = session.amount - refundAmount;
-                (success, ) = payable(session.tutor).call{value: tutorAmount}(
-                    ""
-                );
-                require(success, "Tutor payment failed");
+                paymentToken.safeTransfer(session.tutor, tutorAmount);
             }
         } else {
             // Pay to tutor
@@ -314,10 +356,7 @@ contract SessionEscrow is ISessionEscrow {
 
             accumulatedFees += fee;
 
-            (bool success, ) = payable(session.tutor).call{value: tutorPayment}(
-                ""
-            );
-            require(success, "Tutor payment failed");
+            paymentToken.safeTransfer(session.tutor, tutorPayment);
         }
     }
 
@@ -325,9 +364,7 @@ contract SessionEscrow is ISessionEscrow {
 
     /// @notice Set dispute resolver contract
     /// @param _disputeResolver Address of dispute resolver
-    function setDisputeResolver(
-        address _disputeResolver
-    ) external onlyPlatformOwner {
+    function setDisputeResolver(address _disputeResolver) external onlyOwner {
         if (_disputeResolver == address(0)) {
             revert Errors.ZeroAddress();
         }
@@ -336,7 +373,7 @@ contract SessionEscrow is ISessionEscrow {
 
     /// @notice Update dispute window
     /// @param newWindow New dispute window in seconds
-    function updateDisputeWindow(uint256 newWindow) external onlyPlatformOwner {
+    function updateDisputeWindow(uint256 newWindow) external onlyOwner {
         uint256 oldWindow = disputeWindow;
         disputeWindow = newWindow;
         emit Events.DisputeWindowUpdated(oldWindow, newWindow);
@@ -344,7 +381,7 @@ contract SessionEscrow is ISessionEscrow {
 
     /// @notice Update platform fee
     /// @param newFee New platform fee in basis points
-    function updatePlatformFee(uint256 newFee) external onlyPlatformOwner {
+    function updatePlatformFee(uint256 newFee) external onlyOwner {
         if (newFee > MAX_PLATFORM_FEE) {
             revert Errors.PlatformFeeExceedsMax();
         }
@@ -354,25 +391,24 @@ contract SessionEscrow is ISessionEscrow {
     }
 
     /// @notice Withdraw accumulated platform fees
-    function withdrawFees() external onlyPlatformOwner {
+    function withdrawFees() external onlyOwner nonReentrant {
         uint256 amount = accumulatedFees;
         accumulatedFees = 0;
 
-        (bool success, ) = payable(platformOwner).call{value: amount}("");
-        require(success, "Fee withdrawal failed");
+        paymentToken.safeTransfer(owner(), amount);
 
-        emit Events.PlatformFeesWithdrawn(platformOwner, amount);
+        emit Events.PlatformFeesWithdrawn(owner(), amount);
     }
 
     /// @notice Pause contract
-    function pause() external onlyPlatformOwner {
-        paused = true;
+    function pauseContract() external onlyOwner {
+        _pause();
         emit Events.EmergencyPaused(msg.sender, block.timestamp);
     }
 
     /// @notice Unpause contract
-    function unpause() external onlyPlatformOwner {
-        paused = false;
+    function unpauseContract() external onlyOwner {
+        _unpause();
         emit Events.EmergencyUnpaused(msg.sender, block.timestamp);
     }
 

@@ -19,11 +19,11 @@ contract TutorRegistry is ITutorRegistry {
     /// @notice Address authorized to increment session counts (SessionEscrow contract)
     address public sessionEscrow;
 
-    /// @notice Minimum hourly rate (0.001 ETH)
-    uint256 public constant MIN_HOURLY_RATE = 0.001 ether;
+    /// @notice Minimum hourly rate (10 USDC)
+    uint256 public constant MIN_HOURLY_RATE = 10 * 1e6;
 
-    /// @notice Maximum hourly rate (10 ETH)
-    uint256 public constant MAX_HOURLY_RATE = 10 ether;
+    /// @notice Maximum hourly rate (1,000 USDC)
+    uint256 public constant MAX_HOURLY_RATE = 1_000 * 1e6;
 
     /// @notice Minimum rating value
     uint256 public constant MIN_RATING = 1;
@@ -58,11 +58,18 @@ contract TutorRegistry is ITutorRegistry {
     // ============ External Functions ============
 
     /// @inheritdoc ITutorRegistry
-    function registerTutor(
-        string[] calldata subjects,
-        uint256 hourlyRate
-    ) external override {
-        if (tutorProfiles[msg.sender].isRegistered) {
+    function registerTutor(string[] calldata subjects, uint256 hourlyRate) external override {
+        _registerTutor(msg.sender, subjects, hourlyRate);
+    }
+
+    /// @inheritdoc ITutorRegistry
+    function registerTutorFor(address tutor, string[] calldata subjects, uint256 hourlyRate) external override {
+        _registerTutor(tutor, subjects, hourlyRate);
+    }
+
+    /// @notice Internal function to register a tutor
+    function _registerTutor(address tutor, string[] calldata subjects, uint256 hourlyRate) internal {
+        if (tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorAlreadyRegistered();
         }
         if (subjects.length == 0) {
@@ -72,7 +79,7 @@ contract TutorRegistry is ITutorRegistry {
             revert Errors.InvalidHourlyRate();
         }
 
-        tutorProfiles[msg.sender] = TutorProfile({
+        tutorProfiles[tutor] = TutorProfile({
             isRegistered: true,
             subjects: subjects,
             hourlyRate: hourlyRate,
@@ -82,13 +89,11 @@ contract TutorRegistry is ITutorRegistry {
             registeredAt: block.timestamp
         });
 
-        emit Events.TutorRegistered(msg.sender, subjects, hourlyRate);
+        emit Events.TutorRegistered(tutor, subjects, hourlyRate);
     }
 
     /// @inheritdoc ITutorRegistry
-    function updateHourlyRate(
-        uint256 newRate
-    ) external override onlyRegisteredTutor {
+    function updateHourlyRate(uint256 newRate) external override onlyRegisteredTutor {
         if (newRate < MIN_HOURLY_RATE || newRate > MAX_HOURLY_RATE) {
             revert Errors.InvalidHourlyRate();
         }
@@ -99,11 +104,7 @@ contract TutorRegistry is ITutorRegistry {
     }
 
     /// @inheritdoc ITutorRegistry
-    function rateTutor(
-        address tutor,
-        uint256 sessionId,
-        uint256 rating
-    ) external override {
+    function rateTutor(address tutor, uint256 sessionId, uint256 rating) external override {
         if (!tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorNotRegistered();
         }
@@ -128,9 +129,7 @@ contract TutorRegistry is ITutorRegistry {
     }
 
     /// @inheritdoc ITutorRegistry
-    function incrementSessionCount(
-        address tutor
-    ) external override onlySessionEscrow {
+    function incrementSessionCount(address tutor) external override onlySessionEscrow {
         if (!tutorProfiles[tutor].isRegistered) {
             revert Errors.TutorNotRegistered();
         }
@@ -154,29 +153,21 @@ contract TutorRegistry is ITutorRegistry {
     // ============ View Functions ============
 
     /// @inheritdoc ITutorRegistry
-    function getTutorProfile(
-        address tutor
-    ) external view override returns (TutorProfile memory) {
+    function getTutorProfile(address tutor) external view override returns (TutorProfile memory) {
         return tutorProfiles[tutor];
     }
 
     /// @inheritdoc ITutorRegistry
-    function isTutorRegistered(
-        address tutor
-    ) external view override returns (bool) {
+    function isTutorRegistered(address tutor) external view override returns (bool) {
         return tutorProfiles[tutor].isRegistered;
     }
 
     /// @inheritdoc ITutorRegistry
-    function getTutorRating(
-        address tutor
-    ) external view override returns (uint256) {
+    function getTutorRating(address tutor) external view override returns (uint256) {
         if (tutorProfiles[tutor].ratingCount == 0) {
             return 0;
         }
         // Return average rating scaled by 100 (e.g., 450 = 4.50 stars)
-        return
-            (tutorProfiles[tutor].totalRating * 100) /
-            tutorProfiles[tutor].ratingCount;
+        return (tutorProfiles[tutor].totalRating * 100) / tutorProfiles[tutor].ratingCount;
     }
 }

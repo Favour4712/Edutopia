@@ -6,21 +6,17 @@ import {ISessionEscrow} from "../interfaces/ISessionEscrow.sol";
 import {SessionLib} from "../libraries/SessionLib.sol";
 import {Errors} from "../utils/Errors.sol";
 import {Events} from "../utils/Events.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 /// @title CertificateNFT
-/// @notice ERC721-like NFT for learning certificates
-/// @dev Simplified ERC721 implementation for certificates
-contract CertificateNFT is ICertificateNFT {
+/// @notice ERC721 NFT for learning certificates
+/// @dev Uses OpenZeppelin's ERC721 implementation
+contract CertificateNFT is ICertificateNFT, ERC721, ERC721URIStorage {
     // ============ State Variables ============
 
     /// @notice Session escrow contract
     ISessionEscrow public sessionEscrow;
-
-    /// @notice Token name
-    string public name = "Edutopia Learning Certificate";
-
-    /// @notice Token symbol
-    string public symbol = "EDULEARN";
 
     /// @notice Mapping from token ID to certificate metadata
     mapping(uint256 => CertificateMetadata) private certificates;
@@ -28,29 +24,15 @@ contract CertificateNFT is ICertificateNFT {
     /// @notice Mapping from session ID to token ID
     mapping(uint256 => uint256) private sessionCertificates;
 
-    /// @notice Mapping from token ID to owner
-    mapping(uint256 => address) private tokenOwners;
-
-    /// @notice Mapping from owner to token count
-    mapping(address => uint256) private balances;
-
     /// @notice Mapping from owner to list of owned token IDs
     mapping(address => uint256[]) private ownedTokens;
 
     /// @notice Token counter
     uint256 private tokenCounter;
 
-    // ============ Events ============
-
-    event Transfer(
-        address indexed from,
-        address indexed to,
-        uint256 indexed tokenId
-    );
-
     // ============ Constructor ============
 
-    constructor(address _sessionEscrow) {
+    constructor(address _sessionEscrow) ERC721("Edutopia Learning Certificate", "EDULEARN") {
         if (_sessionEscrow == address(0)) {
             revert Errors.ZeroAddress();
         }
@@ -60,12 +42,31 @@ contract CertificateNFT is ICertificateNFT {
     // ============ External Functions ============
 
     /// @inheritdoc ICertificateNFT
-    function mintCertificate(
+    function mintCertificate(address student, uint256 sessionId, string calldata subject, string calldata metadataURI)
+        external
+        override
+        returns (uint256 tokenId)
+    {
+        return _mintCertificate(msg.sender, student, sessionId, subject, metadataURI);
+    }
+
+    /// @inheritdoc ICertificateNFT
+    function mintCertificateFor(address caller, uint256 sessionId, string calldata subject, string calldata metadataURI)
+        external
+        override
+        returns (uint256 tokenId)
+    {
+        return _mintCertificate(caller, caller, sessionId, subject, metadataURI);
+    }
+
+    /// @notice Internal function to mint a certificate
+    function _mintCertificate(
+        address caller,
         address student,
         uint256 sessionId,
         string calldata subject,
         string calldata metadataURI
-    ) external override returns (uint256 tokenId) {
+    ) internal returns (uint256 tokenId) {
         SessionLib.Session memory session = sessionEscrow.getSession(sessionId);
 
         // Validations
@@ -75,7 +76,7 @@ contract CertificateNFT is ICertificateNFT {
         if (session.status != SessionLib.SessionStatus.Completed) {
             revert Errors.SessionNotCompleted();
         }
-        if (msg.sender != student) {
+        if (caller != student) {
             revert Errors.OnlyStudentCanMint();
         }
         if (session.student != student) {
@@ -102,18 +103,13 @@ contract CertificateNFT is ICertificateNFT {
         });
 
         sessionCertificates[sessionId] = tokenId;
-        tokenOwners[tokenId] = student;
-        balances[student]++;
         ownedTokens[student].push(tokenId);
 
-        emit Transfer(address(0), student, tokenId);
-        emit Events.CertificateMinted(
-            tokenId,
-            student,
-            sessionId,
-            subject,
-            metadataURI
-        );
+        // Mint using OpenZeppelin's ERC721
+        _safeMint(student, tokenId);
+        _setTokenURI(tokenId, metadataURI);
+
+        emit Events.CertificateMinted(tokenId, student, sessionId, subject, metadataURI);
 
         return tokenId;
     }
@@ -121,26 +117,20 @@ contract CertificateNFT is ICertificateNFT {
     // ============ View Functions ============
 
     /// @inheritdoc ICertificateNFT
-    function getCertificate(
-        uint256 tokenId
-    ) external view override returns (CertificateMetadata memory) {
-        if (tokenOwners[tokenId] == address(0)) {
+    function getCertificate(uint256 tokenId) external view override returns (CertificateMetadata memory) {
+        if (ownerOf(tokenId) == address(0)) {
             revert Errors.SessionNotFound();
         }
         return certificates[tokenId];
     }
 
     /// @inheritdoc ICertificateNFT
-    function hasCertificate(
-        uint256 sessionId
-    ) external view override returns (bool) {
+    function hasCertificate(uint256 sessionId) external view override returns (bool) {
         return sessionCertificates[sessionId] != 0;
     }
 
     /// @inheritdoc ICertificateNFT
-    function getStudentCertificates(
-        address student
-    ) external view override returns (uint256[] memory) {
+    function getStudentCertificates(address student) external view override returns (uint256[] memory) {
         return ownedTokens[student];
     }
 
@@ -149,46 +139,15 @@ contract CertificateNFT is ICertificateNFT {
         return tokenCounter;
     }
 
-    /// @notice Get token owner
-    /// @param tokenId Token ID
-    /// @return address Owner address
-    function ownerOf(uint256 tokenId) external view returns (address) {
-        address owner = tokenOwners[tokenId];
-        if (owner == address(0)) {
-            revert Errors.SessionNotFound();
-        }
-        return owner;
+    // ============ Overrides ============
+
+    /// @notice Override tokenURI to use ERC721URIStorage
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
     }
 
-    /// @notice Get balance of owner
-    /// @param owner Owner address
-    /// @return uint256 Number of tokens owned
-    function balanceOf(address owner) external view returns (uint256) {
-        if (owner == address(0)) {
-            revert Errors.ZeroAddress();
-        }
-        return balances[owner];
-    }
-
-    /// @notice Get token URI
-    /// @param tokenId Token ID
-    /// @return string Token URI (IPFS hash)
-    function tokenURI(uint256 tokenId) external view returns (string memory) {
-        if (tokenOwners[tokenId] == address(0)) {
-            revert Errors.SessionNotFound();
-        }
-        return certificates[tokenId].metadataURI;
-    }
-
-    /// @notice Check if contract supports an interface
-    /// @param interfaceId Interface ID
-    /// @return bool True if interface is supported
-    function supportsInterface(
-        bytes4 interfaceId
-    ) external pure returns (bool) {
-        return
-            interfaceId == 0x01ffc9a7 || // ERC165
-            interfaceId == 0x80ac58cd || // ERC721
-            interfaceId == 0x5b5e139f; // ERC721Metadata
+    /// @notice Override supportsInterface
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }

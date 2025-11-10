@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,10 +24,17 @@ import {
   Brain,
   Globe,
 } from "lucide-react";
+import { UsdcBalanceCard } from "@/components/web3/usdc-balance-card";
+import { BaseError } from "viem";
+import { useToast } from "@/hooks/use-toast";
+import { useRegisterTutor, useTutorProfile } from "@/lib/web3/hooks";
+import { truncateHash } from "@/lib/web3/utils";
 
 const registerTutorSchema = z.object({
-  subjects: z.array(z.string()).min(1, "Select at least one subject"),
-  hourlyRate: z.number().min(0.1, "Rate must be at least 0.1 ETH"),
+  hourlyRate: z
+    .number({ invalid_type_error: "Enter a valid number" })
+    .min(10, "Rate must be at least 10 USDC")
+    .max(1000, "Rate cannot exceed 1,000 USDC"),
   bio: z.string().min(10, "Bio must be at least 10 characters"),
 });
 
@@ -93,23 +100,89 @@ const subjectColors: Record<string, string> = {
 export default function RegisterTutorPage() {
   const [step, setStep] = useState(1);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [registrationComplete, setRegistrationComplete] = useState(false);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     watch,
+    setValue,
   } = useForm<RegisterTutorFormData>({
     resolver: zodResolver(registerTutorSchema),
     defaultValues: {
-      hourlyRate: 0.5,
+      hourlyRate: 50,
       bio: "",
     },
   });
 
+  const { toast } = useToast();
+  const profile = useTutorProfile();
+  const {
+    registerTutor,
+    transactionHash,
+    isSubmitting: txIsSubmitting,
+    isConfirming: txIsConfirming,
+    isConfirmed: txIsConfirmed,
+    error: txError,
+    reset: resetRegisterTutor,
+  } = useRegisterTutor();
+
+  const registrationComplete = profile.isRegistered || txIsConfirmed;
+  const isSubmitting = txIsSubmitting || txIsConfirming;
+
   const hourlyRate = watch("hourlyRate");
+
+  const subjectsKey = useMemo(
+    () => profile.subjects.join("|"),
+    [profile.subjects]
+  );
+  const subjectsToDisplay = profile.isRegistered
+    ? profile.subjects
+    : selectedSubjects;
+  const hourlyRateDisplay = profile.isRegistered
+    ? profile.hourlyRate
+    : hourlyRate;
+
+  useEffect(() => {
+    if (profile.isRegistered) {
+      setSelectedSubjects(profile.subjects);
+      if (profile.hourlyRate > 0) {
+        setValue("hourlyRate", profile.hourlyRate);
+      }
+    }
+  }, [profile.isRegistered, profile.hourlyRate, subjectsKey, setValue]);
+
+  const profileRefetch = profile.query.refetch;
+
+  useEffect(() => {
+    if (txIsConfirmed) {
+      toast({
+        title: "Tutor profile confirmed",
+        description: transactionHash
+          ? `Hash ${truncateHash(transactionHash)}`
+          : "Your on-chain tutor profile is now live.",
+      });
+      profileRefetch?.();
+      resetRegisterTutor();
+    }
+  }, [
+    txIsConfirmed,
+    transactionHash,
+    profileRefetch,
+    toast,
+    resetRegisterTutor,
+  ]);
+
+  useEffect(() => {
+    if (txError) {
+      toast({
+        title: "Registration failed",
+        description: txError.message,
+        variant: "destructive",
+      });
+      resetRegisterTutor();
+    }
+  }, [txError, toast, resetRegisterTutor]);
 
   const handleSubjectToggle = (subject: string) => {
     setSelectedSubjects((prev) =>
@@ -120,41 +193,101 @@ export default function RegisterTutorPage() {
   };
 
   const onSubmit = async (data: RegisterTutorFormData) => {
-    setIsSubmitting(true);
-    try {
-      // TODO: Implement smart contract call to registerTutor
-      console.log("Registering tutor:", {
-        ...data,
-        subjects: selectedSubjects,
+    if (selectedSubjects.length === 0) {
+      setStep(1);
+      toast({
+        title: "Select at least one subject",
+        description: "Choose the topics you want to teach before continuing.",
+        variant: "destructive",
       });
-      setRegistrationComplete(true);
-    } finally {
-      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const hash = await registerTutor(selectedSubjects, data.hourlyRate);
+
+      toast({
+        title: "Transaction submitted",
+        description: `Hash ${truncateHash(hash)}`,
+      });
+    } catch (error) {
+      const description =
+        error instanceof BaseError
+          ? error.shortMessage
+          : error instanceof Error
+          ? error.message
+          : "Something went wrong";
+
+      toast({
+        title: "Registration failed",
+        description,
+        variant: "destructive",
+      });
     }
   };
 
   if (registrationComplete) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
-        <div className="max-w-md space-y-6 text-center">
-          <div className="flex justify-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/20">
-              <CheckCircle2 className="h-12 w-12 text-success" />
+      <div className="flex flex-1 flex-col px-4 py-12">
+        <div className="container mx-auto max-w-2xl space-y-8">
+          <UsdcBalanceCard />
+
+          <Card className="space-y-6 border border-success/30 bg-success/10 p-8 text-center shadow-lg">
+            <div className="flex justify-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/20">
+                <CheckCircle2 className="h-12 w-12 text-success" />
+              </div>
             </div>
-          </div>
-          <h1 className="text-3xl font-bold">Welcome to Edutopia!</h1>
-          <p className="text-muted-foreground">
-            Your tutor profile has been created on the blockchain. You're now
-            ready to teach and earn.
-          </p>
-          <div className="space-y-2">
-            <Button asChild className="w-full bg-secondary">
-              <Link href="/tutor">Go to Dashboard</Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/tutor/profile">Edit Profile</Link>
-            </Button>
-          </div>
+            <div className="space-y-3">
+              <h1 className="text-3xl font-bold">Tutor profile live</h1>
+              <p className="text-muted-foreground">
+                You&apos;re ready to accept on-chain bookings and get paid in
+                mUSDC.
+              </p>
+            </div>
+
+            <div className="grid gap-6 text-left sm:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">
+                  Subjects
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {subjectsToDisplay.map((subject) => (
+                    <li key={subject} className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-success" />
+                      {subject}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">
+                  Hourly rate
+                </p>
+                <p className="mt-2 text-2xl font-semibold">
+                  {hourlyRateDisplay.toFixed(2)} mUSDC
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Students will deposit this amount into escrow per hour.
+                </p>
+              </div>
+            </div>
+
+            {transactionHash && (
+              <p className="text-xs text-muted-foreground">
+                Latest transaction: {truncateHash(transactionHash)}
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <Button asChild className="w-full bg-secondary">
+                <Link href="/tutor">Go to Dashboard</Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/tutor/profile">Edit Profile</Link>
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     );
@@ -163,6 +296,7 @@ export default function RegisterTutorPage() {
   return (
     <div className="flex flex-1 flex-col px-4 py-12">
       <div className="container mx-auto max-w-2xl">
+        <UsdcBalanceCard />
         {/* Progress Indicator */}
         <div className="mb-12">
           <div className="flex gap-2">
@@ -282,7 +416,7 @@ export default function RegisterTutorPage() {
                 </div>
                 <h1 className="mb-2 text-4xl font-bold">Set Your Rate</h1>
                 <p className="text-lg text-muted-foreground">
-                  Define your hourly earnings in ETH
+                  Define your hourly earnings in mUSDC (Base Sepolia USDC)
                 </p>
               </div>
 
@@ -294,25 +428,27 @@ export default function RegisterTutorPage() {
                   <div className="relative flex-1 max-w-xs">
                     <Input
                       type="number"
-                      step="0.05"
-                      min="0.1"
+                      step="0.5"
+                      min="10"
                       {...register("hourlyRate", { valueAsNumber: true })}
                       className="h-16 border-2 pr-16 text-center text-2xl font-bold"
                     />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-muted-foreground">
-                      ETH
+                      mUSDC
                     </span>
                   </div>
                 </div>
 
                 <div className="rounded-xl bg-card p-6 text-center shadow-inner">
                   <p className="mb-2 text-sm text-muted-foreground">
-                    Estimated USD Value
+                    Students will pay
                   </p>
                   <p className="text-4xl font-bold text-green-600 dark:text-green-400">
-                    ${(hourlyRate * 2500).toFixed(2)}
+                    {hourlyRate.toFixed(2)} mUSDC
                   </p>
-                  <p className="mt-2 text-xs text-muted-foreground">per hour</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Stable-value token with 6 decimal precision.
+                  </p>
                 </div>
 
                 {errors.hourlyRate && (
@@ -326,12 +462,10 @@ export default function RegisterTutorPage() {
                 <div className="flex gap-3">
                   <Sparkles className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground">
-                      Dynamic pricing
-                    </p>
+                    <p className="font-medium text-foreground">Why mUSDC?</p>
                     <p className="mt-1">
-                      Based on ETH at $2,500. Your USD equivalent adjusts with
-                      real-time market rates.
+                      Using a stable asset keeps payouts predictable for you and
+                      your learners while we&apos;re testing on Base Sepolia.
                     </p>
                   </div>
                 </div>

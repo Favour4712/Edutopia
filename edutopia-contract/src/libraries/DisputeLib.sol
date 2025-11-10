@@ -38,9 +38,7 @@ library DisputeLib {
     /// @param dispute The dispute to check
     /// @return bool True if dispute is open or under review
     function canResolve(Dispute memory dispute) internal pure returns (bool) {
-        return
-            dispute.status == DisputeStatus.Open ||
-            dispute.status == DisputeStatus.UnderReview;
+        return dispute.status == DisputeStatus.Open || dispute.status == DisputeStatus.UnderReview;
     }
 
     /// @notice Check if dispute is resolved

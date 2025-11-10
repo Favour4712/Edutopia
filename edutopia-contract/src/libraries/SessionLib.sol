@@ -39,57 +39,40 @@ library SessionLib {
     /// @param session The session to check
     /// @return bool True if session is active and within time window
     function isActive(Session memory session) internal view returns (bool) {
-        return
-            session.status == SessionStatus.Active &&
-            block.timestamp >= session.startTime &&
-            block.timestamp <= session.startTime + session.duration;
+        return session.status == SessionStatus.Active && block.timestamp >= session.startTime
+            && block.timestamp <= session.startTime + session.duration;
     }
 
     /// @notice Check if session can be completed
     /// @param session The session to check
     /// @return bool True if session can be marked as completed
     function canComplete(Session memory session) internal view returns (bool) {
-        return
-            session.status == SessionStatus.Active &&
-            block.timestamp >= session.startTime + session.duration;
+        return session.status == SessionStatus.Active && block.timestamp >= session.startTime + session.duration;
     }
 
     /// @notice Check if session can be disputed
     /// @param session The session to check
     /// @param disputeWindow The dispute window duration in seconds
     /// @return bool True if session is within dispute window
-    function canDispute(
-        Session memory session,
-        uint256 disputeWindow
-    ) internal view returns (bool) {
-        return
-            session.status == SessionStatus.Completed &&
-            !session.hasDispute &&
-            block.timestamp <= session.completedAt + disputeWindow;
+    function canDispute(Session memory session, uint256 disputeWindow) internal view returns (bool) {
+        return session.status == SessionStatus.Completed && !session.hasDispute
+            && block.timestamp <= session.completedAt + disputeWindow;
     }
 
     /// @notice Check if session can be cancelled
     /// @param session The session to check
     /// @return bool True if session can be cancelled
     function canCancel(Session memory session) internal view returns (bool) {
-        return
-            session.status == SessionStatus.Pending ||
-            (session.status == SessionStatus.Active &&
-                block.timestamp < session.startTime);
+        return session.status == SessionStatus.Pending
+            || (session.status == SessionStatus.Active && block.timestamp < session.startTime);
     }
 
     /// @notice Check if payment can be released
     /// @param session The session to check
     /// @param disputeWindow The dispute window duration in seconds
     /// @return bool True if payment can be released to tutor
-    function canReleasePayment(
-        Session memory session,
-        uint256 disputeWindow
-    ) internal view returns (bool) {
-        return
-            session.status == SessionStatus.Completed &&
-            !session.paymentReleased &&
-            !session.hasDispute &&
-            block.timestamp > session.completedAt + disputeWindow;
+    function canReleasePayment(Session memory session, uint256 disputeWindow) internal view returns (bool) {
+        return session.status == SessionStatus.Completed && !session.paymentReleased && !session.hasDispute
+            && block.timestamp > session.completedAt + disputeWindow;
     }
 }

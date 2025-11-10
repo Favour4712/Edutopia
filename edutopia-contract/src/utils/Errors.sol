@@ -6,6 +6,7 @@ pragma solidity ^0.8.20;
 library Errors {
     // ============ Session Escrow Errors ============
     error InsufficientPayment();
+    error InsufficientAllowance();
     error SessionNotFound();
     error SessionAlreadyCompleted();
     error SessionAlreadyCancelled();

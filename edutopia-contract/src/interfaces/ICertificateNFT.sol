@@ -20,19 +20,24 @@ interface ICertificateNFT {
     /// @param subject Subject of the session
     /// @param metadataURI IPFS hash of the certificate metadata
     /// @return tokenId The ID of the minted NFT
-    function mintCertificate(
-        address student,
-        uint256 sessionId,
-        string calldata subject,
-        string calldata metadataURI
-    ) external returns (uint256 tokenId);
+    function mintCertificate(address student, uint256 sessionId, string calldata subject, string calldata metadataURI)
+        external
+        returns (uint256 tokenId);
+
+    /// @notice Mint a certificate NFT (called by hub)
+    /// @param caller Address of the caller (must be student)
+    /// @param sessionId ID of the completed session
+    /// @param subject Subject of the session
+    /// @param metadataURI IPFS hash of the certificate metadata
+    /// @return tokenId The ID of the minted NFT
+    function mintCertificateFor(address caller, uint256 sessionId, string calldata subject, string calldata metadataURI)
+        external
+        returns (uint256 tokenId);
 
     /// @notice Get certificate metadata
     /// @param tokenId ID of the certificate NFT
     /// @return CertificateMetadata struct
-    function getCertificate(
-        uint256 tokenId
-    ) external view returns (CertificateMetadata memory);
+    function getCertificate(uint256 tokenId) external view returns (CertificateMetadata memory);
 
     /// @notice Check if certificate exists for a session
     /// @param sessionId ID of the session
@@ -42,9 +47,7 @@ interface ICertificateNFT {
     /// @notice Get all certificates for a student
     /// @param student Address of the student
     /// @return uint256[] Array of token IDs
-    function getStudentCertificates(
-        address student
-    ) external view returns (uint256[] memory);
+    function getStudentCertificates(address student) external view returns (uint256[] memory);
 
     /// @notice Get total number of certificates minted
     /// @return uint256 Total certificate count
